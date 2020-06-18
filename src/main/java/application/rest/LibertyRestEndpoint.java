@@ -33,6 +33,13 @@ import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.io.StringReader;
+import io.jaegertracing.Configuration;
+import io.jaegertracing.Configuration.ReporterConfiguration;
+import io.jaegertracing.Configuration.SamplerConfiguration;
+import io.jaegertracing.internal.JaegerTracer;
+import io.opentracing.Span;
+import io.opentracing.Tracer;
+
 
 @Path("/")
 public class LibertyRestEndpoint extends Application {
@@ -47,6 +54,14 @@ public class LibertyRestEndpoint extends Application {
     private final static String[] headers_to_propagate = {"x-request-id","x-b3-traceid","x-b3-spanid","x-b3-sampled","x-b3-flags",
       "x-ot-span-context","x-datadog-trace-id","x-datadog-parent-id","x-datadog-sampled", "end-user","user-agent"};
 
+    public static Tracer tracer=null;
+    public static JaegerTracer initTracer() {
+        SamplerConfiguration samplerConfig = SamplerConfiguration.fromEnv().withType("const").withParam(1);
+        ReporterConfiguration reporterConfig = ReporterConfiguration.fromEnv().withLogSpans(true);
+        Configuration config = new Configuration("review").withSampler(samplerConfig).withReporter(reporterConfig);
+        return config.getTracer();
+    }
+    
     private String getJsonResponse (String productId, int starsReviewer1, int starsReviewer2) {
     	String result = "{";
     	result += "\"id\": \"" + productId + "\",";
@@ -128,6 +143,12 @@ public class LibertyRestEndpoint extends Application {
     @GET
     @Path("/reviews/{productId}")
     public Response bookReviewsById(@PathParam("productId") int productId, @Context HttpHeaders requestHeaders) {
+    	
+    	if (tracer == null) {
+    		tracer =initTracer();
+    	}
+    	
+    	Span span = tracer.buildSpan("bookReviewsById").start();
       int starsReviewer1 = -1;
       int starsReviewer2 = -1;
 
@@ -147,6 +168,7 @@ public class LibertyRestEndpoint extends Application {
       } 
 
       String jsonResStr = getJsonResponse(Integer.toString(productId), starsReviewer1, starsReviewer2);
+      span.finish();
       return Response.ok().type(MediaType.APPLICATION_JSON).entity(jsonResStr).build();
     }
 }
